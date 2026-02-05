@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>GTA Orders Map (Paste → Refresh)</title>
+  <title>GTA Orders Map (URL data → Auto Refresh)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -22,7 +22,7 @@
     input[type="range"]{width:180px}
     code{background:#f6f6f6;padding:2px 5px;border-radius:4px}
     .panel{
-      border:1px solid #ddd;border-radius:10px;padding:10px 12px;min-width:300px;
+      border:1px solid #ddd;border-radius:10px;padding:10px 12px;min-width:320px;
       background:#fafafa;
     }
     .panel h3{margin:0 0 8px 0;font-size:14px}
@@ -34,6 +34,7 @@
     }
     .grid label{font-size:12px;color:#333}
     .muted{color:#666;font-size:12px}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
   </style>
 </head>
 <body>
@@ -52,8 +53,8 @@ Mt Hope,43.6932,-79.6200,12,4878.88
 Resurrection,43.7684,-79.2983,11,4588.38"></textarea>
 
       <div class="hint">
-        This version <b>does NOT geocode</b>. You must provide Lat &amp; Lng.
-        Refresh is instant and works offline / behind SharePoint firewalls.
+        <b>URL auto-load:</b> append <code class="mono">?data=...</code> (URL-encoded). Example:
+        <code class="mono">?data=Glen%20Oaks%2C43.8727%2C-79.3185%2C14%2C5323.08%0AMt%20Hope%2C...</code>
       </div>
     </div>
 
@@ -97,6 +98,7 @@ Resurrection,43.7684,-79.2983,11,4588.38"></textarea>
 
       <div class="row" style="margin-top:10px">
         <button class="btn" id="refresh">Refresh</button>
+        <button class="btn" id="copyUrl" title="Builds a shareable URL using the current textarea (URL-encoded)">Copy URL</button>
       </div>
       <div class="hint" id="status">Ready.</div>
       <div class="small muted">Hover bubbles to see values.</div>
@@ -114,6 +116,7 @@ Resurrection,43.7684,-79.2983,11,4588.38"></textarea>
 
   const statusEl = document.getElementById('status');
   const refreshBtn = document.getElementById('refresh');
+  const copyUrlBtn = document.getElementById('copyUrl');
   const inputEl = document.getElementById('input');
 
   const sizeByEl = document.getElementById('sizeBy');
@@ -221,29 +224,64 @@ Resurrection,43.7684,-79.2983,11,4588.38"></textarea>
       `${twoScaleText}.`;
   }
 
-  function refreshIfAuto() {
-    // No auto-refresh right now; kept as a hook if you want later.
+  // --- URL auto-load support ---
+  // Use: ?data=<URL-encoded multi-line text>
+  function loadFromUrlIfPresent() {
+    const params = new URLSearchParams(window.location.search);
+    const data = params.get("data");
+    if (!data) return false;
+
+    try {
+      // URLSearchParams already decodes percent-encoding, but we handle "+" just in case
+      const text = data.replace(/\+/g, "%20");
+      inputEl.value = decodeURIComponent(text);
+      return true;
+    } catch (e) {
+      // Fallback: use raw if decoding fails
+      inputEl.value = data;
+      return true;
+    }
   }
 
   refreshBtn.addEventListener('click', render);
 
-  // Live-update opacity label
+  // Auto re-render when settings change (if map already has points)
+  const settingsEls = [sizeByEl, bubbleColorEl, bubbleOpacityEl, twoScaleEl, thresholdMetricEl, thresholdValueEl, highColorEl];
+  settingsEls.forEach(el => el.addEventListener('change', () => {
+    if (layerGroup.getLayers().length > 0) render();
+  }));
+
   bubbleOpacityEl.addEventListener('input', () => {
     bubbleOpacityLabelEl.textContent = Number(bubbleOpacityEl.value).toFixed(2);
   });
 
-  // Optional: auto re-render when settings change (but only if map already has points)
-  const settingsEls = [sizeByEl, bubbleColorEl, bubbleOpacityEl, twoScaleEl, thresholdMetricEl, thresholdValueEl, highColorEl];
-  settingsEls.forEach(el => el.addEventListener('change', () => {
-    // If there is anything on map, rerender quickly
-    if (layerGroup.getLayers().length > 0) render();
-  }));
+  copyUrlBtn.addEventListener('click', async () => {
+    const base = window.location.origin + window.location.pathname;
+    const encoded = encodeURIComponent(inputEl.value);
+    const url = base + "?data=" + encoded;
 
-  // Starter example
-  inputEl.value = `Glen Oaks,43.8727,-79.3185,14,5323.08
+    try {
+      await navigator.clipboard.writeText(url);
+      statusEl.textContent = "URL copied to clipboard (includes current data).";
+    } catch (e) {
+      prompt("Copy this URL:", url);
+    }
+  });
+
+  // Starter example (only used if no ?data= is present)
+  const loaded = loadFromUrlIfPresent();
+  if (!loaded) {
+    inputEl.value = `Glen Oaks,43.8727,-79.3185,14,5323.08
 Mt Hope,43.6932,-79.6200,12,4878.88
 Resurrection,43.7684,-79.2983,11,4588.38`;
+  }
+
   bubbleOpacityLabelEl.textContent = Number(bubbleOpacityEl.value).toFixed(2);
+
+  // Auto-render on load if data present
+  if (loaded) {
+    setTimeout(render, 50);
+  }
 </script>
 </body>
 </html>
